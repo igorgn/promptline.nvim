@@ -2,70 +2,64 @@ local M = {}
 
 local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
-local function create_float(title, width, height)
-  height = height or 1
-  width = width or 60
-  local row = math.floor((vim.o.lines - height) / 2) - 4
-  local col = math.floor((vim.o.columns - width) / 2)
-
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].bufhidden = "wipe"
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = row,
-    col = col,
-    style = "minimal",
-    border = "rounded",
-    title = " " .. title .. " ",
-    title_pos = "center",
-  })
-
-  vim.wo[win].winhl = "Normal:NormalFloat,FloatBorder:FloatBorder"
-
-  return buf, win
+local function make_win(title, width, height, row, col)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	local win = vim.api.nvim_open_win(buf, false, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded",
+		title = title and (" " .. title .. " ") or nil,
+		title_pos = "center",
+	})
+	vim.wo[win].winhl = "Normal:NormalFloat,FloatBorder:FloatBorder"
+	return buf, win
 end
 
 function M.close_float(win)
-  if win and vim.api.nvim_win_is_valid(win) then
-    vim.api.nvim_win_close(win, true)
-  end
+	if win and vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_close(win, true)
+	end
 end
 
 function M.show_working(win, buf, msg)
-  vim.bo[buf].buftype = ""
-  vim.bo[buf].modifiable = true
+	vim.bo[buf].buftype = ""
+	vim.bo[buf].modifiable = true
 
-  local frame = 1
-  local timer = vim.loop.new_timer()
+	local frame = 1
+	local timer = vim.loop.new_timer()
 
-  local function render()
-    if not vim.api.nvim_buf_is_valid(buf) then
-      timer:stop()
-      return
-    end
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { spinner_frames[frame] .. "  " .. msg })
-    frame = (frame % #spinner_frames) + 1
-  end
+	local function render()
+		if not vim.api.nvim_buf_is_valid(buf) then
+			timer:stop()
+			return
+		end
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { spinner_frames[frame] .. "  " .. msg })
+		frame = (frame % #spinner_frames) + 1
+	end
 
-  render()
-  timer:start(0, 80, vim.schedule_wrap(render))
+	render()
+	timer:start(0, 80, vim.schedule_wrap(render))
 
-  if vim.api.nvim_win_is_valid(win) then
-    vim.api.nvim_win_set_config(win, { title = " promptline — working… ", title_pos = "center" })
-  end
-  vim.cmd("stopinsert")
-  vim.cmd("wincmd p")
+	if vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_set_config(win, { title = " promptline — working… ", title_pos = "center" })
+	end
+	vim.cmd("stopinsert")
+	vim.cmd("wincmd p")
 
-  local stopped = false
-  return function()
-    if stopped then return end
-    stopped = true
-    timer:stop()
-    timer:close()
-  end
+	local stopped = false
+	return function()
+		if stopped then
+			return
+		end
+		stopped = true
+		timer:stop()
+		timer:close()
+	end
 end
 
 function M.show_explain(win, buf, text)
@@ -110,170 +104,182 @@ function M.show_explain(win, buf, text)
   vim.keymap.set("n", "q",     close, { buffer = buf, nowait = true })
 end
 
--- Draw preset rows below the input line and resize the window.
--- Called only after the first C-n/C-p press.
-local function draw_presets(buf, win, presets, selected_idx, width)
-  local ns = vim.api.nvim_create_namespace("promptline_presets")
-  vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+-- Open a small secondary float showing the preset list.
+-- Returns { win, buf, close() }.
+local function open_preset_picker(presets, selected_idx, anchor_row, anchor_col, anchor_width)
+	local width = 20
+	for _, p in ipairs(presets) do
+		width = math.max(width, #p.label + 6)
+	end
 
-  -- Build rows: separator then one row per preset
-  local hint = " <C-n/p> presets "
-  local dashes = math.max(0, math.floor((width - #hint) / 2))
-  local sep = string.rep("─", dashes) .. hint .. string.rep("─", math.max(0, width - dashes - #hint))
+	-- Position to the right of the input float, same row
+	local col = anchor_col + anchor_width + 2
+	-- If it would go off screen, put it to the left instead
+	if col + width > vim.o.columns then
+		col = math.max(0, anchor_col - width - 2)
+	end
 
-  local rows = {}
-  for _, p in ipairs(presets) do
-    local tag = p.mode == "explain" and "  [explain]" or ""
-    table.insert(rows, string.format("  %s%s", p.label, tag))
-  end
+	local buf, win = make_win("mode", width, #presets, anchor_row, col)
 
-  -- Overwrite lines 1..N (line 0 is owned by the prompt buftype)
-  vim.bo[buf].buftype = ""
-  vim.bo[buf].modifiable = true
-  local all = { "" } -- placeholder for line 0 (prompt line, will be restored)
-  table.insert(all, sep)
-  for _, r in ipairs(rows) do table.insert(all, r) end
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, all)
-  vim.bo[buf].buftype = "prompt"
-  vim.fn.prompt_setprompt(buf, "")
+	vim.bo[buf].modifiable = true
+	local ns = vim.api.nvim_create_namespace("promptline_presets")
 
-  -- Highlight separator
-  vim.api.nvim_buf_set_extmark(buf, ns, 1, 0, { end_col = #sep, hl_group = "Comment" })
+	local function redraw(idx)
+		local rows = {}
+		for i, p in ipairs(presets) do
+			table.insert(rows, string.format(" %s %s", (i == idx) and "›" or " ", p.label))
+		end
+		vim.bo[buf].modifiable = true
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, rows)
+		vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+		for i in ipairs(presets) do
+			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
+				end_col = #rows[i],
+				hl_group = (i == idx) and "PmenuSel" or "Pmenu",
+			})
+		end
+		vim.bo[buf].modifiable = false
+	end
 
-  -- Highlight preset rows
-  for i, r in ipairs(rows) do
-    vim.api.nvim_buf_set_extmark(buf, ns, 1 + i, 0, {
-      end_row = 1 + i,
-      end_col = #r,
-      hl_group = (i == selected_idx) and "PmenuSel" or "Pmenu",
-    })
-  end
+	redraw(selected_idx)
+	vim.bo[buf].modifiable = false
 
-  -- Resize window: 1 input + 1 sep + N presets
-  vim.api.nvim_win_set_config(win, { height = 2 + #presets })
-  -- Keep cursor on the input line
-  vim.api.nvim_win_set_cursor(win, { 1, 0 })
+	return {
+		win = win,
+		buf = buf,
+		redraw = redraw,
+		close = function()
+			M.close_float(win)
+		end,
+	}
 end
 
 function M.prompt(opts, on_submit, on_cancel)
-  local title       = opts.title or "Prompt"
-  local placeholder = opts.placeholder or ""
-  local width       = opts.width or 60
-  local presets     = opts.presets or {}
+	local title = opts.title or "Prompt"
+	local placeholder = opts.placeholder or ""
+	local width = opts.width or 60
+	local presets = opts.presets or {}
 
-  -- Start as a single-line float
-  local buf, win = create_float(title, width, 1)
+	-- Center the input float
+	local height = 1
+	local row = math.floor((vim.o.lines - height) / 2) - 4
+	local col = math.floor((vim.o.columns - width) / 2)
 
-  vim.bo[buf].buftype = "prompt"
-  vim.fn.prompt_setprompt(buf, "")
+	local buf, win = make_win(title, width, height, row, col)
+	vim.api.nvim_set_current_win(win)
 
-  local hint_ns = vim.api.nvim_create_namespace("promptline_hint")
-  local preset_idx = 0
-  local preset_mode = "edit"  -- tracks mode of currently selected/typed preset
-  local presets_visible = false
+	vim.bo[buf].buftype = "prompt"
+	vim.fn.prompt_setprompt(buf, "")
 
-  -- Show faded placeholder when input is empty
-  local function set_placeholder()
-    vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
-    if placeholder ~= "" then
-      vim.api.nvim_buf_set_extmark(buf, hint_ns, 0, 0, {
-        virt_text = { { placeholder, "Comment" } },
-        virt_text_pos = "overlay",
-        hl_mode = "combine",
-      })
-    end
-  end
+	-- Placeholder hint
+	local hint_ns = vim.api.nvim_create_namespace("promptline_hint")
+	if placeholder ~= "" then
+		vim.api.nvim_buf_set_extmark(buf, hint_ns, 0, 0, {
+			virt_text = { { placeholder, "Comment" } },
+			virt_text_pos = "overlay",
+			hl_mode = "combine",
+		})
+	end
 
-  set_placeholder()
+	-- Update title hint if presets exist
+	if #presets > 0 then
+		vim.api.nvim_win_set_config(win, {
+			title = " promptline  <C-n/p> mode ",
+			title_pos = "center",
+		})
+	end
 
-  if #presets > 0 then
-    vim.api.nvim_win_set_config(win, {
-      title = " promptline  <C-n/p> presets ",
-      title_pos = "center",
-    })
-  end
+	vim.cmd("startinsert")
 
-  vim.cmd("startinsert")
+	vim.api.nvim_create_autocmd("TextChangedI", {
+		buffer = buf,
+		once = true,
+		callback = function()
+			vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
+		end,
+	})
 
-  -- Clear placeholder on first keystroke (only when user types, not via cycle)
-  vim.api.nvim_create_autocmd("TextChangedI", {
-    buffer = buf,
-    once = true,
-    callback = function()
-      preset_idx = 0
-      preset_mode = "edit"
-      vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
-    end,
-  })
+	local submitted = false
+	local selected_idx = 1
+	local picker = nil -- preset picker window, opened lazily
 
-  local submitted = false
+	local function close_picker()
+		if picker then
+			picker.close()
+			picker = nil
+		end
+	end
 
-  local function do_cancel()
-    if submitted then return end
-    submitted = true
-    M.close_float(win)
-    vim.schedule(on_cancel)
-  end
+	local function do_cancel()
+		if submitted then
+			return
+		end
+		submitted = true
+		close_picker()
+		M.close_float(win)
+		vim.schedule(on_cancel)
+	end
 
-  local function cycle(dir)
-    if #presets == 0 then return end
-    preset_idx = ((preset_idx - 1 + dir) % #presets) + 1
-    local p = presets[preset_idx]
-    preset_mode = p.mode or "edit"
+	local function cycle(dir)
+		if #presets == 0 then
+			return
+		end
+		selected_idx = ((selected_idx - 1 + dir) % #presets) + 1
 
-    -- Expand the window to show the list on first cycle
-    if not presets_visible then
-      presets_visible = true
-    end
-    draw_presets(buf, win, presets, preset_idx, width)
+		if not picker then
+			-- Lazy-open the picker on first cycle
+			local win_pos = vim.api.nvim_win_get_position(win)
+			picker = open_preset_picker(presets, selected_idx, win_pos[1], win_pos[2], width)
+		else
+			picker.redraw(selected_idx)
+		end
 
-    -- Write the preset prompt text into the input line so user can edit it
-    vim.bo[buf].buftype = ""
-    vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, 0, 1, false, { p.prompt })
-    vim.bo[buf].buftype = "prompt"
-    vim.fn.prompt_setprompt(buf, "")
-    vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
+		-- Keep focus and cursor in the input window
+		vim.api.nvim_set_current_win(win)
+		vim.cmd("startinsert!")
+	end
 
-    -- Put cursor at end of the prefilled text
-    vim.cmd("startinsert!")
-  end
+	vim.keymap.set("i", "<C-n>", function()
+		cycle(1)
+	end, { buffer = buf, nowait = true })
+	vim.keymap.set("i", "<C-p>", function()
+		cycle(-1)
+	end, { buffer = buf, nowait = true })
 
-  vim.keymap.set("i", "<C-n>", function() cycle(1)  end, { buffer = buf, nowait = true })
-  vim.keymap.set("i", "<C-p>", function() cycle(-1) end, { buffer = buf, nowait = true })
+	vim.keymap.set("i", "<CR>", function()
+		if submitted then
+			return
+		end
+		submitted = true
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, 1, false)
+		local text = (lines[1] or ""):gsub("^%s*(.-)%s*$", "%1")
+		close_picker()
+		vim.schedule(function()
+			on_submit({ text = text, preset_idx = selected_idx }, win, buf)
+		end)
+	end, { buffer = buf, nowait = true })
 
-  vim.keymap.set("i", "<CR>", function()
-    if submitted then return end
-    submitted = true
+	vim.keymap.set("i", "<Esc>", do_cancel, { buffer = buf, nowait = true })
+	vim.keymap.set("n", "<Esc>", do_cancel, { buffer = buf, nowait = true })
 
-    local lines = vim.api.nvim_buf_get_lines(buf, 0, 1, false)
-    local prompt = (lines[1] or ""):gsub("^%s*(.-)%s*$", "%1")
-    if prompt == "" then prompt = placeholder end
-    local mode = preset_mode
+	vim.api.nvim_create_autocmd("WinClosed", {
+		pattern = tostring(win),
+		once = true,
+		callback = function()
+			if not submitted then
+				close_picker()
+				vim.schedule(on_cancel)
+			end
+		end,
+	})
 
-    vim.schedule(function()
-      on_submit({ prompt = prompt, mode = mode }, win, buf)
-    end)
-  end, { buffer = buf, nowait = true })
-
-  vim.keymap.set("i", "<Esc>", do_cancel, { buffer = buf, nowait = true })
-  vim.keymap.set("n", "<Esc>", do_cancel, { buffer = buf, nowait = true })
-
-  vim.api.nvim_create_autocmd("WinClosed", {
-    pattern = tostring(win),
-    once = true,
-    callback = function()
-      if not submitted then vim.schedule(on_cancel) end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("WinLeave", {
-    buffer = buf,
-    once = true,
-    callback = function()
-      do_cancel()
-    end,
-  })
+	vim.api.nvim_create_autocmd("WinLeave", {
+		buffer = buf,
+		once = true,
+		callback = function()
+			do_cancel()
+		end,
+	})
 end
 
 return M

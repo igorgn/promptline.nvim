@@ -6,14 +6,17 @@ local replace = require("promptline.replace")
 
 M.config = {
 	backend = "claude_cli", -- "claude_cli" | "anthropic_api" | "copilot_chat"
-	model = "claude-haiku-4-5", -- used by anthropic_api backend
+	model = "claude-haiku-4-5",
 	max_tokens = 8096,
-	api_key = nil, -- falls back to ANTHROPIC_API_KEY env var
+	api_key = nil,
 	default_prompt = "Improve this",
 	system_prompt = "You are a precise code and text editor. When given text and an instruction, you apply the instruction and return only the edited result.",
 	keymap = "<leader>p",
 	float_width = 60,
 	format_on_apply = true,
+	-- Presets are modes cycled with <C-n>/<C-p>.
+	-- The selected preset's prompt is used when the input is left empty.
+	-- Typing in the input overrides the preset prompt entirely.
 	presets = {
 		{ label = "Fix",     prompt = "Fix the issues in this code",        mode = "edit" },
 		{ label = "Improve", prompt = "Improve this",                       mode = "edit" },
@@ -38,14 +41,13 @@ local function get_visual_selection()
 	local end_pos = vim.api.nvim_buf_get_mark(buf, ">")
 
 	local start_line = start_pos[1]
-	local start_col  = start_pos[2]
-	local end_line   = end_pos[1]
-	local end_col    = end_pos[2]
+	local start_col = start_pos[2]
+	local end_line = end_pos[1]
+	local end_col = end_pos[2]
 
 	local lines = vim.api.nvim_buf_get_text(buf, start_line - 1, start_col, end_line - 1, end_col + 1, {})
 	local text = table.concat(lines, "\n")
 
-	-- Collect LSP diagnostics overlapping the selection
 	local diag_lines = {}
 	for _, d in ipairs(vim.diagnostic.get(buf)) do
 		local dline = d.lnum + 1
@@ -56,12 +58,12 @@ local function get_visual_selection()
 	end
 
 	return {
-		buf        = buf,
+		buf = buf,
 		start_line = start_line,
-		start_col  = start_col,
-		end_line   = end_line,
-		end_col    = end_col + 1,
-		text       = text,
+		start_col = start_col,
+		end_line = end_line,
+		end_col = end_col + 1,
+		text = text,
 		diagnostics = #diag_lines > 0 and table.concat(diag_lines, "\n") or nil,
 	}
 end
@@ -75,20 +77,20 @@ function M.trigger()
 	end
 
 	ui.prompt({
-		title    = "promptline",
+		title = "promptline",
 		placeholder = M.config.default_prompt,
-		width    = M.config.float_width,
-		presets  = M.config.presets,
+		width = M.config.float_width,
+		presets = M.config.presets,
 	}, function(submission, float_win, float_buf)
-		-- submission = { prompt, mode }
-		local user_prompt = submission.prompt
-		local mode = submission.mode
+		local preset = M.config.presets[submission.preset_idx]
+		local mode = (preset and preset.mode) or "edit"
 
+		-- Typed text takes priority; fall back to selected preset's prompt, then default
+		local user_prompt = submission.text
 		if user_prompt == "" then
-			user_prompt = M.config.default_prompt
+			user_prompt = (preset and preset.prompt) or M.config.default_prompt
 		end
 
-		-- For explain mode, override the system prompt to ask for an explanation
 		local cfg = M.config
 		if mode == "explain" then
 			cfg = vim.tbl_extend("force", M.config, {
@@ -115,7 +117,6 @@ function M.trigger()
 				end
 
 				if mode == "explain" then
-					-- Show result in the float, don't touch the buffer
 					ui.show_explain(float_win, float_buf, result)
 				else
 					ui.close_float(float_win)
