@@ -13,6 +13,7 @@ M.config = {
 	system_prompt = "You are a precise code and text editor. When given text and an instruction, you apply the instruction and return only the edited result.",
 	keymap = "<leader>p",
 	float_width = 60,
+	format_on_apply = true,  -- run LSP formatter after replacement
 }
 
 function M.setup(opts)
@@ -103,6 +104,14 @@ function M.trigger()
 				end
 
 				replace.replace_selection(sel.buf, sel.start_line, sel.start_col, sel.end_line, sel.end_col, result)
+
+				if M.config.format_on_apply then
+					vim.lsp.buf.format({ bufnr = sel.buf, async = false })
+				end
+
+				vim.api.nvim_buf_call(sel.buf, function()
+					vim.cmd("silent! write")
+				end)
 
 				vim.notify("promptline: done  (u to undo)", vim.log.levels.INFO)
 			end)
