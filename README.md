@@ -65,7 +65,7 @@ require("promptline").setup({
   api_key = nil,
 
   -- Shown as greyed-out hint in the prompt window; used when user submits empty input
-  default_prompt = "Improve this",
+  default_prompt = "Improve or fix this",
 
   -- System prompt sent to the model
   system_prompt = "You are a precise code and text editor. When given text and an instruction, you apply the instruction and return only the edited result.",

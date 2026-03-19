@@ -169,9 +169,10 @@ function M.prompt(opts, on_submit, on_cancel)
 
   local hint_ns = vim.api.nvim_create_namespace("promptline_hint")
   local preset_idx = 0
+  local preset_mode = "edit"  -- tracks mode of currently selected/typed preset
   local presets_visible = false
 
-  -- Show faded placeholder
+  -- Show faded placeholder when input is empty
   local function set_placeholder()
     vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
     if placeholder ~= "" then
@@ -183,34 +184,24 @@ function M.prompt(opts, on_submit, on_cancel)
     end
   end
 
-  -- Show which preset is active in the input line
-  local function set_preset_hint(p)
-    vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
-    vim.api.nvim_buf_set_extmark(buf, hint_ns, 0, 0, {
-      virt_text = { { "  " .. p.label, "CursorLineNr" } },
-      virt_text_pos = "overlay",
-      hl_mode = "combine",
-    })
-  end
-
   set_placeholder()
 
-  -- Show hint that presets exist (right-aligned in title)
   if #presets > 0 then
     vim.api.nvim_win_set_config(win, {
-      title = " promptline  <C-n> presets ",
+      title = " promptline  <C-n/p> presets ",
       title_pos = "center",
     })
   end
 
   vim.cmd("startinsert")
 
-  -- Clear placeholder when user starts typing
+  -- Clear placeholder on first keystroke (only when user types, not via cycle)
   vim.api.nvim_create_autocmd("TextChangedI", {
     buffer = buf,
     once = true,
     callback = function()
       preset_idx = 0
+      preset_mode = "edit"
       vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
     end,
   })
@@ -227,13 +218,24 @@ function M.prompt(opts, on_submit, on_cancel)
   local function cycle(dir)
     if #presets == 0 then return end
     preset_idx = ((preset_idx - 1 + dir) % #presets) + 1
+    local p = presets[preset_idx]
+    preset_mode = p.mode or "edit"
 
+    -- Expand the window to show the list on first cycle
     if not presets_visible then
       presets_visible = true
     end
-
     draw_presets(buf, win, presets, preset_idx, width)
-    set_preset_hint(presets[preset_idx])
+
+    -- Write the preset prompt text into the input line so user can edit it
+    vim.bo[buf].buftype = ""
+    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_set_lines(buf, 0, 1, false, { p.prompt })
+    vim.bo[buf].buftype = "prompt"
+    vim.fn.prompt_setprompt(buf, "")
+    vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
+
+    -- Put cursor at end of the prefilled text
     vim.cmd("startinsert!")
   end
 
@@ -244,15 +246,10 @@ function M.prompt(opts, on_submit, on_cancel)
     if submitted then return end
     submitted = true
 
-    local prompt, mode
-    if preset_idx > 0 then
-      prompt = presets[preset_idx].prompt
-      mode   = presets[preset_idx].mode or "edit"
-    else
-      local lines = vim.api.nvim_buf_get_lines(buf, 0, 1, false)
-      prompt = (lines[1] or ""):gsub("^%s*(.-)%s*$", "%1")
-      mode   = "edit"
-    end
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, 1, false)
+    local prompt = (lines[1] or ""):gsub("^%s*(.-)%s*$", "%1")
+    if prompt == "" then prompt = placeholder end
+    local mode = preset_mode
 
     vim.schedule(function()
       on_submit({ prompt = prompt, mode = mode }, win, buf)
@@ -267,6 +264,14 @@ function M.prompt(opts, on_submit, on_cancel)
     once = true,
     callback = function()
       if not submitted then vim.schedule(on_cancel) end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("WinLeave", {
+    buffer = buf,
+    once = true,
+    callback = function()
+      do_cancel()
     end,
   })
 end
