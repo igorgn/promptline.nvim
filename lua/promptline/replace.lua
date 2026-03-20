@@ -4,7 +4,7 @@ local M = {}
 -- Handles partial first/last line selection (col offsets).
 -- The replacement is a single undo step.
 function M.replace_selection(buf, start_line, start_col, end_line, end_col, new_text)
-  -- nvim_buf_set_text uses 0-indexed lines and byte cols
+  -- nvim_buf_set_text uses 0-indexed lines and byte colf
   local lines = vim.split(new_text, "\n", { plain = true })
 
   -- Strip trailing empty line that split often produces

@@ -4,8 +4,8 @@ AI-powered inline text editor for Neovim. Select code or text in visual mode, de
 
 ## Features
 
-- Visual mode selection → float prompt → in-place replacement
 - Native undo (`u`) — replacement is a single undo step
+- Visual mode selection → float prompt → in-place replacement
 - LSP diagnostics automatically included in the prompt (no need to describe the error)
 - LSP formatting applied after replacement, file saved automatically
 - Preset shortcuts with `<C-n>`/`<C-p>` — each prefills the input so you can customize before submitting

@@ -59,7 +59,7 @@ function M.run_claude_cli(config, selection, user_prompt, diagnostics, on_done)
 
   local cmd = {
     "claude",
-    "--no-history",        -- don't pollute conversation history
+    "--no-session-persistence",  -- don't save this call to session history
     "-p", prompt,
     "--output-format", "text",
   }
