@@ -18,15 +18,14 @@ M.config = {
 	-- The selected preset's prompt is used when the input is left empty.
 	-- Typing in the input overrides the preset prompt entirely.
 	presets = {
-		{ label = "Fix",     prompt = "Fix the issues in this code",        mode = "edit" },
-		{ label = "Improve", prompt = "Improve this",                       mode = "edit" },
+		{ label = "Fix", prompt = "Fix the issues in this code", mode = "edit" },
+		{ label = "Improve", prompt = "Improve this", mode = "edit" },
 		{ label = "Explain", prompt = "Explain what this code does clearly", mode = "explain" },
 	},
 }
 
 function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-
 	vim.keymap.set("v", M.config.keymap, function()
 		M.trigger()
 	end, { desc = "Promptline: edit selection with AI" })
@@ -76,6 +75,22 @@ function M.trigger()
 		return
 	end
 
+	-- Highlight the selection while the float is open
+	local hl_ns = vim.api.nvim_create_namespace("promptline_selection")
+	for line = sel.start_line - 1, sel.end_line - 1 do
+		local start_col = (line == sel.start_line - 1) and sel.start_col or 0
+		local line_len = #(vim.api.nvim_buf_get_lines(sel.buf, line, line + 1, false)[1] or "")
+		local end_col = (line == sel.end_line - 1) and math.min(sel.end_col, line_len) or line_len
+		vim.api.nvim_buf_set_extmark(sel.buf, hl_ns, line, start_col, {
+			end_row = line,
+			end_col = end_col,
+			hl_group = "Visual",
+		})
+	end
+	local function clear_hl()
+		vim.api.nvim_buf_clear_namespace(sel.buf, hl_ns, 0, -1)
+	end
+
 	ui.prompt({
 		title = "promptline",
 		placeholder = M.config.default_prompt,
@@ -103,6 +118,7 @@ function M.trigger()
 		backend.run(cfg, sel.text, user_prompt, sel.diagnostics, function(result, err)
 			vim.schedule(function()
 				stop_spinner()
+				clear_hl()
 
 				if err then
 					ui.close_float(float_win)
@@ -136,6 +152,7 @@ function M.trigger()
 		end)
 	end, function()
 		-- on_cancel
+		clear_hl()
 	end)
 end
 
