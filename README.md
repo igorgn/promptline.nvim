@@ -4,11 +4,11 @@ AI-powered inline text editor for Neovim. Select code or text in visual mode, de
 
 ## Features
 
-- Native undo (`u`) — replacement is a single undo step
 - Visual mode selection → float prompt → in-place replacement
+- Native undo (`u`) — replacement is a single undo step
 - LSP diagnostics automatically included in the prompt (no need to describe the error)
 - LSP formatting applied after replacement, file saved automatically
-- Preset shortcuts with `<C-n>`/`<C-p>` — each prefills the input so you can customize before submitting
+- Preset mode selector with `<C-n>`/`<C-p>` — opens a side picker, `<Enter>` uses the selected mode's default prompt or whatever you typed
 - **Explain mode** — shows the AI response in the float without touching your buffer
 - Three backends: Claude CLI, Anthropic API, CopilotChat
 
@@ -26,7 +26,7 @@ AI-powered inline text editor for Neovim. Select code or text in visual mode, de
 
 ```lua
 {
-  "yourusername/promptline.nvim",
+  "igorgn/promptline.nvim",
   config = function()
     require("promptline").setup()
   end,
@@ -48,23 +48,25 @@ AI-powered inline text editor for Neovim. Select code or text in visual mode, de
 
 1. Select text in **Visual mode**
 2. Press `<leader>p` (default keymap)
-3. A float window appears:
+3. A float prompt appears:
    - Type a custom instruction and press `<Enter>`
-   - Or press `<C-n>`/`<C-p>` to cycle presets — the preset prompt is prefilled in the input so you can edit it before submitting
-   - Press `<Enter>` on an empty input to use the default prompt
-   - Press `<Esc>` or focus another window to cancel
-4. A spinner shows while the AI is working
-5. **Edit mode**: selection is replaced in-place, file is saved, LSP formatting applied
-6. **Explain mode**: result appears in the float — press `q` or `<Esc>` to close
+   - Or press `<C-n>`/`<C-p>` to open the mode picker — a small window appears showing available presets, cycling highlights the active one
+   - `<Enter>` with empty input uses the selected preset's default prompt
+   - `<Esc>` or focusing another window cancels
+4. A spinner shows in the float while the AI is working
+5. **Edit mode**: selection replaced in-place, LSP formatting applied, file saved
+6. **Explain mode**: result shown in the float — press `q` or `<Esc>` to close
 7. Press `u` to undo any edit
 
 ## Default Presets
 
-| Label   | Prompt                              | Mode    |
+| Label   | Default prompt                      | Mode    |
 |---------|-------------------------------------|---------|
 | Fix     | Fix the issues in this code         | edit    |
 | Improve | Improve this                        | edit    |
 | Explain | Explain what this code does clearly | explain |
+
+Presets are fully customizable — see Configuration below.
 
 ## Configuration
 
@@ -85,7 +87,7 @@ require("promptline").setup({
   -- API key for anthropic_api backend (falls back to $ANTHROPIC_API_KEY env var)
   api_key = nil,
 
-  -- Used when the user submits an empty prompt
+  -- Used when submitting with empty input and no preset selected
   default_prompt = "Improve this",
 
   -- System prompt for edit mode
@@ -100,8 +102,9 @@ require("promptline").setup({
   -- Run LSP formatter on the buffer after applying a change
   format_on_apply = true,
 
-  -- Preset shortcuts shown when pressing <C-n>/<C-p> in the prompt window.
-  -- Each preset prefills the input field — the user can edit before submitting.
+  -- Presets cycled with <C-n>/<C-p> in the prompt window.
+  -- Selecting a preset sets the active mode; empty input uses its default prompt.
+  -- Typing your own input overrides the preset prompt but keeps the mode.
   -- mode = "edit"    — replaces the selection with the AI response
   -- mode = "explain" — shows the AI response in the float without editing the buffer
   presets = {
@@ -114,9 +117,9 @@ require("promptline").setup({
 
 ## Examples
 
-| Selection | Prompt | Result |
-|-----------|--------|--------|
-| Rust function with type error | *(LSP error auto-included)* + `Fix` preset | Fixes the type error |
+| Selection | Input | Result |
+|-----------|-------|--------|
+| Rust function with type error | `Fix` preset (LSP error auto-included) | Fixes the type error |
 | Any code | `Make more idiomatic` | Rewrites using idiomatic patterns |
 | Long function | `Split into smaller functions` | Refactors in-place |
 | Paragraph | `Make concise` | Shortens while preserving meaning |
@@ -143,7 +146,7 @@ Calls the Anthropic API directly using `curl`.
 ```lua
 require("promptline").setup({
   backend = "anthropic_api",
-  model = "claude-sonnet-4-6",  -- or any claude model
+  model = "claude-sonnet-4-6",  -- or any Claude model
   -- api_key = "sk-ant-...",    -- or set ANTHROPIC_API_KEY env var
 })
 ```
