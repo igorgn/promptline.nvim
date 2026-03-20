@@ -1,6 +1,9 @@
 # promptline.nvim
 
 AI-powered inline text editor for Neovim. Select code or text in visual mode, describe what you want, and the selection is replaced in-place. Press `u` to undo.
+## Screenshots
+Quickly get local explanation from any window, even claude
+<img width="1122" height="716" alt="image" src="https://github.com/user-attachments/assets/976ad326-3ffb-4bbd-bc3a-95fd76f8dd5e" />
 
 ## Features
 
