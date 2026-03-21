@@ -26,6 +26,9 @@ M.config = {
 
 function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+
+	vim.api.nvim_set_hl(0, "PromptlineDim", { bg = "#000000", fg = "#000000" })
+
 	vim.keymap.set("v", M.config.keymap, function()
 		M.trigger()
 	end, { desc = "Promptline: edit selection with AI" })
