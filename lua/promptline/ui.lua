@@ -62,6 +62,35 @@ function M.show_working(win, buf, msg)
 	end
 end
 
+local function open_dim_overlay()
+  local overlay_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[overlay_buf].bufhidden = "wipe"
+
+  -- Fill with spaces so the highlight covers the whole screen
+  local lines = {}
+  for _ = 1, vim.o.lines do
+    table.insert(lines, string.rep(" ", vim.o.columns))
+  end
+  vim.api.nvim_buf_set_lines(overlay_buf, 0, -1, false, lines)
+
+  local overlay_win = vim.api.nvim_open_win(overlay_buf, false, {
+    relative = "editor",
+    width = vim.o.columns,
+    height = vim.o.lines,
+    row = 0,
+    col = 0,
+    style = "minimal",
+    border = "none",
+    zindex = 49,  -- below the explain float (default zindex is 50)
+    focusable = false,
+  })
+
+  vim.wo[overlay_win].winhl = "Normal:PromptlineDim"
+  vim.wo[overlay_win].winblend = 60
+
+  return overlay_win
+end
+
 function M.show_explain(win, buf, text)
   vim.bo[buf].buftype = ""
   vim.bo[buf].modifiable = true
@@ -88,18 +117,25 @@ function M.show_explain(win, buf, text)
     end
   end
 
+  -- Dim overlay behind the explanation
+  local overlay_win = open_dim_overlay()
+
   local height = math.min(#wrapped, math.floor(vim.o.lines * 0.6))
   vim.api.nvim_win_set_config(win, {
     height = height,
     title = " promptline — explanation ",
     title_pos = "center",
+    zindex = 50,
   })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, wrapped)
   vim.bo[buf].modifiable = false
   vim.api.nvim_win_set_cursor(win, { 1, 0 })
   vim.api.nvim_set_current_win(win)
 
-  local function close() M.close_float(win) end
+  local function close()
+    M.close_float(overlay_win)
+    M.close_float(win)
+  end
   vim.keymap.set("n", "<Esc>", close, { buffer = buf, nowait = true })
   vim.keymap.set("n", "q",     close, { buffer = buf, nowait = true })
 end
